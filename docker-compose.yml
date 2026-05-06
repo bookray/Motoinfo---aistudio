@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: moto-admin-panel
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-secret}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - DB_TYPE=${DB_TYPE:-SQLITE}
+      - SQLITE_PATH=${SQLITE_PATH:-./data/database.sqlite}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./data:/app/data
+    networks:
+      - moto-network
+
+networks:
+  moto-network:
+    driver: bridge
+
+# Volumes removed as we use local sqlite file

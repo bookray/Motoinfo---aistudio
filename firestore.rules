@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // GLOBAL HELPERS
+    // ===============================================================
+    function isSignedIn() { return request.auth != null; }
+    function verified() { return request.auth.token.email_verified == true; }
+    
+    // Identity verification (Relational lookup)
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSuperAdmin() { 
+      return isSignedIn() && verified() && (
+        request.auth.token.email == "bookray1114@gmail.com" || 
+        getUserData().role == "SUPER_ADMIN"
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && verified() && (
+        isSuperAdmin() || 
+        getUserData().role == "ADMIN"
+      );
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ===============================================================
+    // COLLECTION: USERS
+    // ===============================================================
+    function isValidUser(data) {
+      return data.username is string && data.username.size() <= 64 &&
+             data.email is string && data.email.size() <= 128 &&
+             data.role in ["ADMIN", "ADVERTISER", "SUPER_ADMIN"];
+    }
+
+    match /users/{userId} {
+      // Identity isolation
+      allow get: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow list: if isSuperAdmin();
+      
+      allow create: if isSuperAdmin() && isValidUser(incoming());
+      allow update: if isSuperAdmin() && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['username', 'email', 'password', 'role', 'assignedChatIds', 'maxMessages', 'accessPeriodDays', 'canPin', 'expiresAt', 'messagesSent'])
+      );
+      allow delete: if isSuperAdmin() && userId != request.auth.uid;
+    }
+
+    // ===============================================================
+    // COLLECTION: CHATS
+    // ===============================================================
+    function isValidChat(data) {
+      return data.id is string && data.title is string && data.title.size() <= 200 &&
+             data.active is bool;
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAdmin();
+      // Allow the system bot (unauthenticated) to update chat stats for now if needed, 
+      // but ideally it should be isAdmin(). 
+      // Given the mock-admin setup, we'll allow unauthenticated writes to chats ONLY for basic fields if needed,
+      // but let's try strict first.
+      allow write: if isAdmin() && isValidChat(incoming());
+      
+      // Temporary: Allow unauthenticated writes to chats for the bot's background processing
+      // ONLY if the bot is running in server environment where auth might be null
+      allow write: if request.auth == null && isValidChat(incoming());
+    }
+
+    // ===============================================================
+    // COLLECTION: TASKS
+    // ===============================================================
+    function isValidTask(data) {
+      return data.text is string && data.text.size() <= 4096 &&
+             data.chatIds is list && data.intervalDays is number &&
+             data.active is bool;
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() && isValidTask(incoming());
+      allow delete: if isAdmin();
+      
+      // Bot needs to update lastRun
+      allow update: if request.auth == null && incoming().diff(existing()).affectedKeys().hasOnly(['lastRun']);
+    }
+
+    // ===============================================================
+    // COLLECTION: BANS (Global)
+    // ===============================================================
+    match /bans/{userId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+      allow write: if request.auth == null; // Bot reports bans
+    }
+
+    // ===============================================================
+    // COLLECTION: LOGS
+    // ===============================================================
+    function isValidLog(data) {
+      return data.timestamp is string && data.type is string && data.message is string;
+    }
+
+    match /logs/{logId} {
+      allow read: if isAdmin();
+      // System and Admins can log
+      allow create: if isValidLog(incoming());
+      allow update, delete: if false; // Append-only
+    }
+
+    // ===============================================================
+    // COLLECTION: CONFIG
+    // ===============================================================
+    match /config/moderation {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /config/settings {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    match /config/broadcast {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ===============================================================
+    // COLLECTION: STATS & OTHERS
+    // ===============================================================
+    match /stats/{date} {
+      allow read, write: if true; // Public stats for now or bot-managed
+    }
+
+    match /chat_bans/{banId} {
+      allow read, write: if true;
+    }
+
+    match /whitelist/{userId} {
+      allow read, write: if true;
+    }
+
+    match /memberships/{membershipId} {
+      allow read, write: if true;
+    }
+    
+    // For any other path, deny by default (redundant but safe)
+  }
+}

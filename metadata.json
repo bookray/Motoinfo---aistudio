@@ -1,0 +1,5 @@
+{
+  "name": "Remix: Motoinfo Admin - май",
+  "description": "A comprehensive web-based administration dashboard for the TeleGuard Telegram Moderation Bot, featuring chat management, analytics, global bans, and scheduling tools. Supports both Firebase and SQLite backends.",
+  "requestFramePermissions": []
+}

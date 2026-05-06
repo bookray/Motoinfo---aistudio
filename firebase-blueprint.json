@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "Chat": {
+      "title": "Chat",
+      "description": "A Telegram chat managed by the bot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Telegram Chat ID" },
+        "title": { "type": "string", "description": "Chat title" },
+        "active": { "type": "boolean", "description": "Whether the bot is active in this chat" },
+        "type": { "type": "string", "description": "Chat type (group, supergroup, channel, private)" },
+        "memberCount": { "type": "number", "description": "Number of members" },
+        "messagesCount": { "type": "number", "description": "Total messages processed" },
+        "lastActive": { "type": "string", "format": "date-time", "description": "Last activity timestamp" }
+      },
+      "required": ["id", "title", "active"]
+    },
+    "ScheduledTask": {
+      "title": "ScheduledTask",
+      "description": "A scheduled message task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique task ID" },
+        "text": { "type": "string", "description": "Message text" },
+        "chatIds": { "type": "array", "items": { "type": "string" }, "description": "Target chat IDs" },
+        "intervalDays": { "type": "number", "description": "Interval in days" },
+        "time": { "type": "string", "description": "Time of day (HH:mm)" },
+        "active": { "type": "boolean", "description": "Whether the task is active" },
+        "lastRun": { "type": "string", "format": "date-time", "description": "Last run timestamp" },
+        "imageUrl": { "type": "string", "description": "Optional image URL" },
+        "buttons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["id", "text", "chatIds", "intervalDays", "time", "active"]
+    },
+    "Ban": {
+      "title": "Ban",
+      "description": "A banned user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Telegram User ID" },
+        "username": { "type": "string", "description": "Telegram username" },
+        "reason": { "type": "string", "description": "Reason for ban" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Ban timestamp" }
+      },
+      "required": ["id"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "An event log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique log ID" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Event timestamp" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"], "description": "Log level" },
+        "message": { "type": "string", "description": "Log message" },
+        "chatId": { "type": "string", "description": "Optional associated chat ID" }
+      },
+      "required": ["id", "timestamp", "type", "message"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Bot settings and filters",
+      "type": "object",
+      "properties": {
+        "autoApprove": { "type": "boolean" },
+        "captchaEnabled": { "type": "boolean" },
+        "blockLinks": { "type": "boolean" },
+        "blockMedia": { "type": "boolean" },
+        "blockForwards": { "type": "boolean" },
+        "forbiddenWords": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "StatsPoint": {
+      "title": "StatsPoint",
+      "description": "A data point for charts",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "Date (YYYY-MM-DD)" },
+        "users": { "type": "number" },
+        "messages": { "type": "number" }
+      },
+      "required": ["date"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A dashboard user with specific roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "username": { "type": "string", "description": "Login username" },
+        "email": { "type": "string", "description": "User email" },
+        "password": { "type": "string", "description": "Hashed password" },
+        "role": { "type": "string", "enum": ["ADMIN", "ADVERTISER", "SUPER_ADMIN"], "description": "User role" },
+        "assignedChatIds": { "type": "array", "items": { "type": "string" }, "description": "Chats this user can manage" },
+        "maxMessages": { "type": "number", "description": "Max messages for advertisers" },
+        "messagesSent": { "type": "number", "description": "Messages sent by advertiser" },
+        "accessPeriodDays": { "type": "number", "description": "Access period in days" },
+        "canPin": { "type": "boolean", "description": "Whether the user can pin messages" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "Optional expiration timestamp" }
+      },
+      "required": ["id", "username", "email", "password", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/chats/{chatId}": { "schema": "Chat", "description": "Managed chats" },
+    "/tasks/{taskId}": { "schema": "ScheduledTask", "description": "Scheduled messages" },
+    "/bans/{userId}": { "schema": "Ban", "description": "Global ban list" },
+    "/logs/{logId}": { "schema": "Log", "description": "System logs" },
+    "/config/moderation": { "schema": "Settings", "description": "Moderation settings" },
+    "/stats/{date}": { "schema": "StatsPoint", "description": "Historical stats" },
+    "/users/{userId}": { "schema": "User", "description": "Dashboard users" }
+  }
+}
