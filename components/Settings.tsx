@@ -42,14 +42,16 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings }
           'Authorization': `Bearer ${token}`
         }
       });
+      const data = await res.json().catch(() => ({ error: 'Некорректный ответ сервера' }));
       if (res.ok) {
         setStatusMessage({ text: 'Бот успешно перезапущен', type: 'success' });
       } else {
-        setStatusMessage({ text: 'Ошибка при перезапуске бота', type: 'error' });
+        setStatusMessage({ text: data.error || 'Ошибка при перезапуске бота', type: 'error' });
       }
-      setTimeout(() => setStatusMessage(null), 3000);
-    } catch (e) {
-      setStatusMessage({ text: 'Ошибка сети при перезапуске', type: 'error' });
+      setTimeout(() => setStatusMessage(null), 5000);
+    } catch (e: any) {
+      setStatusMessage({ text: `Ошибка сети: ${e.message || 'неизвестно'}`, type: 'error' });
+      setTimeout(() => setStatusMessage(null), 5000);
     } finally {
       setIsRestarting(false);
     }

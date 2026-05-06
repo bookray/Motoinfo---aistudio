@@ -1444,7 +1444,7 @@ async function trackMembership(chatId: string, user: { id: number, username?: st
 // Initialize Telegram Bot
 let bot: Telegraf | null = null;
 
-async function initBot(token: string, retryCount = 3) {
+async function initBot(token: string, retryCount = 5) {
   if (!token) {
     console.warn('Bot token is empty. Bot functionality is disabled.');
     return null;
@@ -1472,15 +1472,23 @@ async function initBot(token: string, retryCount = 3) {
       console.error(`Unhandled error while processing ${ctx.updateType}:`, err);
     });
     
-    // Add simple ping to check connectivity before launch
+    // Add simple ping and DNS check to check connectivity before launch
     try {
-      console.log('Testing connection to Telegram API...');
-      const response = await fetch('https://api.telegram.org', { timeout: 10000 }).catch(e => { throw new Error(`DNS/Connection error: ${e.message}`); });
+      console.log('Testing connectivity to Telegram API...');
+      const dns = await import('dns/promises');
+      const addresses = await dns.lookup('api.telegram.org').catch(e => {
+        console.warn(`DNS lookup failed for api.telegram.org: ${e.message}`);
+        return { address: 'Not resolved' };
+      });
+      console.log(`DNS Resolved api.telegram.org to: ${JSON.stringify(addresses)}`);
+
+      const response = await fetch('https://api.telegram.org', { timeout: 15000 }).catch(e => { 
+        throw new Error(`Connection error: ${e.message}`); 
+      });
       if (!response.ok) console.warn(`Telegram API test status: ${response.status}`);
-      else console.log('Telegram API is reachable');
+      else console.log('Telegram API is reachable via HTTPS');
     } catch (e: any) {
-      console.error('Network connectivity check failed:', e.message);
-      // We still try to launch, maybe it's just the test that failed
+      console.error('Initial network connectivity check failed (will still try bot launch):', e.message);
     }
 
     bot.start((ctx) => {
@@ -2553,7 +2561,7 @@ async function initBot(token: string, retryCount = 3) {
           }
           
           if (currentAttempt < maxAttempts) {
-            const delay = 5000 * currentAttempt;
+            const delay = 10000 * currentAttempt;
             console.log(`Retrying bot launch in ${delay/1000}s...`);
             await new Promise(r => setTimeout(r, delay));
           } else {
