@@ -2,6 +2,7 @@ import express from 'express';
 console.log('--- SERVER STARTING UP ---');
 import path from 'path';
 import { Telegraf } from 'telegraf';
+import { Agent } from 'https';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
@@ -1443,7 +1444,7 @@ async function trackMembership(chatId: string, user: { id: number, username?: st
 // Initialize Telegram Bot
 let bot: Telegraf | null = null;
 
-async function initBot(token: string) {
+async function initBot(token: string, retryCount = 3) {
   if (!token) {
     console.warn('Bot token is empty. Bot functionality is disabled.');
     return null;
@@ -1452,12 +1453,18 @@ async function initBot(token: string) {
   try {
     if (bot) {
       console.log('Stopping existing bot instance...');
-      await bot.stop();
+      try {
+        await bot.stop();
+      } catch (stopErr) {
+        console.warn('Error while stopping bot:', stopErr);
+      }
     }
 
     bot = new Telegraf(token, {
+      handlerTimeout: 60000,
       telegram: {
-        apiRoot: 'https://api.telegram.org', // Ensure standard API root
+        apiRoot: 'https://api.telegram.org',
+        agent: new Agent({ keepAlive: true, timeout: 30000 }),
       }
     });
 
@@ -1465,6 +1472,17 @@ async function initBot(token: string) {
       console.error(`Unhandled error while processing ${ctx.updateType}:`, err);
     });
     
+    // Add simple ping to check connectivity before launch
+    try {
+      console.log('Testing connection to Telegram API...');
+      const response = await fetch('https://api.telegram.org', { timeout: 10000 }).catch(e => { throw new Error(`DNS/Connection error: ${e.message}`); });
+      if (!response.ok) console.warn(`Telegram API test status: ${response.status}`);
+      else console.log('Telegram API is reachable');
+    } catch (e: any) {
+      console.error('Network connectivity check failed:', e.message);
+      // We still try to launch, maybe it's just the test that failed
+    }
+
     bot.start((ctx) => {
       console.log('Start command received');
       ctx.reply('TeleGuard Admin Bot is active!');
@@ -2508,22 +2526,45 @@ async function initBot(token: string) {
         console.log('Telegram bot launched successfully using polling (webhook fallback)');
       }
     } else {
-      try {
-        console.log('Attempting to launch bot using polling...');
-        await bot.telegram.deleteWebhook().catch(() => {});
-        await bot.launch();
-        console.log('Telegram bot launched successfully using polling');
-      } catch (err: any) {
-        if (err.response && err.response.error_code === 409) {
-          console.warn('Telegram bot conflict detected (409). Polling instance might be already active elsewhere.');
-        } else {
-          throw err;
+      let currentAttempt = 0;
+      const maxAttempts = retryCount;
+      
+      while (currentAttempt < maxAttempts) {
+        try {
+          currentAttempt++;
+          console.log(`Attempting to launch bot using polling (Attempt ${currentAttempt}/${maxAttempts})...`);
+          
+          // Clear any stuck webhooks
+          await bot.telegram.deleteWebhook().catch(() => {});
+          
+          // Small verification call
+          const botInfo = await bot.telegram.getMe();
+          console.log(`Telegram API connection verified: @${botInfo.username}`);
+          
+          await bot.launch();
+          console.log('Telegram bot launched successfully using polling');
+          return bot;
+        } catch (err: any) {
+          console.error(`Bot launch attempt ${currentAttempt} failed:`, err.message || err);
+          
+          if (err.response && err.response.error_code === 409) {
+            console.warn('Telegram bot conflict detected (409). Polling instance might be already active elsewhere.');
+            return bot; // Already running somewhere?
+          }
+          
+          if (currentAttempt < maxAttempts) {
+            const delay = 5000 * currentAttempt;
+            console.log(`Retrying bot launch in ${delay/1000}s...`);
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            throw err;
+          }
         }
       }
     }
     return bot;
   } catch (err) {
-    console.error('Failed to initialize Telegram bot:', err);
+    console.error('Failed to initialize Telegram bot after all attempts:', err);
     bot = null;
     return null;
   }
