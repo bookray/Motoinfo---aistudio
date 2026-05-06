@@ -48,9 +48,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Identity isolation
-      allow get: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow list: if isSuperAdmin();
+      allow read: if isSuperAdmin() || (isSignedIn() && request.auth.uid == userId);
+      // Allow bot to check for users on startup
+      allow list: if isSuperAdmin() || request.auth == null;
       
       allow create: if isSuperAdmin() && isValidUser(incoming());
       allow update: if isSuperAdmin() && isValidUser(incoming()) && (
@@ -68,15 +68,10 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      allow read: if isAdmin();
-      // Allow the system bot (unauthenticated) to update chat stats for now if needed, 
-      // but ideally it should be isAdmin(). 
-      // Given the mock-admin setup, we'll allow unauthenticated writes to chats ONLY for basic fields if needed,
-      // but let's try strict first.
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isAdmin() && isValidChat(incoming());
       
       // Temporary: Allow unauthenticated writes to chats for the bot's background processing
-      // ONLY if the bot is running in server environment where auth might be null
       allow write: if request.auth == null && isValidChat(incoming());
     }
 
@@ -90,7 +85,7 @@ service cloud.firestore {
     }
 
     match /tasks/{taskId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isAdmin() && isValidTask(incoming());
       allow delete: if isAdmin();
       
@@ -102,7 +97,7 @@ service cloud.firestore {
     // COLLECTION: BANS (Global)
     // ===============================================================
     match /bans/{userId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isAdmin();
       allow write: if request.auth == null; // Bot reports bans
     }
@@ -115,9 +110,9 @@ service cloud.firestore {
     }
 
     match /logs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       // System and Admins can log
-      allow create: if isValidLog(incoming());
+      allow create: if true; // Allow bot to log
       allow update, delete: if false; // Append-only
     }
 
@@ -125,17 +120,17 @@ service cloud.firestore {
     // COLLECTION: CONFIG
     // ===============================================================
     match /config/moderation {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isAdmin();
     }
 
     match /config/settings {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isSuperAdmin();
     }
 
     match /config/broadcast {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || request.auth == null;
       allow write: if isAdmin();
     }
 

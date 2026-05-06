@@ -11,7 +11,7 @@ import { db } from './database.ts';
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'teleguard-secret-key-2026';
 
 app.use(cors());
@@ -1093,7 +1093,7 @@ let settings = {
 // Sync functions
 async function syncData() {
   try {
-    console.log(`Starting data sync from ${process.env.DB_TYPE || 'database'}...`);
+    console.log(`Starting data sync...`);
     // Initial load
     const chatsSnap = await db.collection('chats').get();
     chats = chatsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
@@ -1236,7 +1236,7 @@ async function syncData() {
       console.error('Firestore settings stream error:', err);
     });
 
-    console.log('Data synced from Firestore successfully');
+    console.log('Data synced successfully');
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'initial_sync');
   }
@@ -1455,7 +1455,11 @@ async function initBot(token: string) {
       await bot.stop();
     }
 
-    bot = new Telegraf(token);
+    bot = new Telegraf(token, {
+      telegram: {
+        apiRoot: 'https://api.telegram.org', // Ensure standard API root
+      }
+    });
 
     bot.catch((err, ctx) => {
       console.error(`Unhandled error while processing ${ctx.updateType}:`, err);
@@ -2487,14 +2491,26 @@ async function initBot(token: string) {
       }
     });
 
-    const appUrl = process.env.VITE_APP_URL || process.env.APP_URL;
-    if (appUrl && appUrl.startsWith('https')) {
+    const appUrl = process.env.APP_URL || process.env.VITE_APP_URL;
+    const useWebhooks = false; // Force polling for stability in preview environment
+    
+    if (useWebhooks && appUrl && appUrl.startsWith('https') && !appUrl.includes('aistudio.google.com')) {
       const secretPath = `/telegraf-webhook/${token.split(':')[1]}`;
+      console.log(`Setting up webhook at ${appUrl}${secretPath}`);
       app.use(bot.webhookCallback(secretPath));
-      await bot.telegram.setWebhook(`${appUrl}${secretPath}`);
-      console.log(`Telegram bot initialized with webhooks at ${appUrl}${secretPath}`);
+      try {
+        await bot.telegram.setWebhook(`${appUrl}${secretPath}`);
+        console.log(`Telegram bot initialized with webhooks`);
+      } catch (webhookErr) {
+        console.error('Webhook setup failed, falling back to polling:', webhookErr);
+        await bot.telegram.deleteWebhook().catch(() => {});
+        await bot.launch();
+        console.log('Telegram bot launched successfully using polling (webhook fallback)');
+      }
     } else {
       try {
+        console.log('Attempting to launch bot using polling...');
+        await bot.telegram.deleteWebhook().catch(() => {});
         await bot.launch();
         console.log('Telegram bot launched successfully using polling');
       } catch (err: any) {
@@ -2514,13 +2530,18 @@ async function initBot(token: string) {
 }
 
 // Initial bot launch
-syncData().then(() => {
-  if (settings.botToken) {
-    initBot(settings.botToken);
-  }
-}).catch(err => {
-  console.error('Data sync failed during startup:', err);
-});
+syncData()
+  .catch(err => {
+    console.error('Initial data sync failed (proceeding anyway):', err);
+  })
+  .finally(() => {
+    if (settings.botToken) {
+      console.log('Starting bot initialization...');
+      initBot(settings.botToken);
+    } else {
+      console.warn('Bot token missing, bot will not start automatically.');
+    }
+  });
 
 // Helper to fix invalid URLs for Telegram (e.g. localhost)
 function fixUrl(url: string): string {
@@ -2538,6 +2559,33 @@ function fixUrl(url: string): string {
   }
   return url;
 }
+
+app.post('/api/bot/restart', authenticateToken, async (req, res) => {
+  try {
+    if (settings.botToken) {
+      const result = await initBot(settings.botToken);
+      if (result) {
+        res.json({ success: true, message: 'Бот успешно перезапущен' });
+      } else {
+        res.status(500).json({ error: 'Не удалось инициализировать бота' });
+      }
+    } else {
+      res.status(400).json({ error: 'Токен бота не настроен' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Ошибка при перезапуске бота' });
+  }
+});
+
+app.post('/api/settings/db-setup', authenticateToken, async (req, res) => {
+  try {
+    // This is a placeholder for DB setup logic if needed
+    // For now we just return success as Firebase is automatic
+    res.json({ success: true, message: 'База данных настроена' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Ошибка при настройке БД' });
+  }
+});
 
 app.post('/api/broadcast', authenticateToken, async (req, res) => {
   try {

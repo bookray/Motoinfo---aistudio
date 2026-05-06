@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { adminDb as firebaseDb } from './firebase-admin.ts';
 
-const DB_TYPE = process.env.DB_TYPE || 'FIREBASE';
+const DB_TYPE = process.env.DB_TYPE && ['FIREBASE', 'SQLITE'].includes(process.env.DB_TYPE) ? process.env.DB_TYPE : 'FIREBASE';
 const SQLITE_PATH = process.env.SQLITE_PATH || './data/database.sqlite';
 
 export enum OperationType {
